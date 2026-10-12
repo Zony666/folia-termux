@@ -17,9 +17,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.mjs",
-    "serve": "node server/index.mjs",
-    "netease": "cross-env PORT=3300 api",
+    "api": "cross-env PORT=3300 api",
+    "web": "node server/index.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

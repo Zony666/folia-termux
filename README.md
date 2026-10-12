@@ -7,14 +7,15 @@
 
 ## 它是什么
 
-一个**单进程本地网关** `server/index.mjs`，在手机上一个 origin 里同时提供：
+两个独立命令，各自起、各自停：
 
 ```
 Termux
-└─ node server/index.mjs
-   ├─ 静态网页        dist/                http://127.0.0.1:3000
-   ├─ AI 接口         /api/*               （AI 主题 / 歌词分词 / 歌词代理）
-   └─ 网易云反代      /netease/*  →  127.0.0.1:3300（自动拉起网易云 API 子进程）
+├─ npm run api     网易云 API                    http://127.0.0.1:3300
+└─ npm run web     静态网页 + AI 接口            http://127.0.0.1:3000
+                   ├─ dist/                     静态前端
+                   ├─ /api/*                    AI 主题 / 歌词分词 / 歌词代理
+                   └─ /netease/*  →             127.0.0.1:3300（反代到 api）
 手机浏览器 / 添加到主屏幕 → http://127.0.0.1:3000
 ```
 
@@ -63,25 +64,28 @@ cp .env.example .env.local
 | `AI_PROVIDER` | **服务端**分词选哪个 provider。注意不是 `VITE_` 前缀。用 DeepSeek 就填 `openai`。 |
 | `GEMINI_API_KEY` | 用 Gemini 时填。 |
 | `OPENAI_API_KEY` / `OPENAI_API_URL` / `OPENAI_API_MODEL` / `OPENAI_API_TEMPERATURE` | 用 OpenAI 兼容接口时填。DeepSeek 示例：`https://api.deepseek.com` + `deepseek-flash`。 |
-| `PORT` / `NETEASE_PORT` / `NETEASE_AUTOSTART` | 可选。网页端口默认 `3000`、网易云端口默认 `3300`、是否自动拉起网易云默认 `true`。 |
+| `PORT` / `NETEASE_PORT` | 可选。`npm run web` 的网页端口默认 `3000`；`npm run api` 的网易云端口默认 `3300`，`web` 会把 `/netease` 反代到它。 |
 
 密钥只放在手机本地，不会进任何前端产物。
 
 ## 运行
 
+先构建一次，然后在**两个终端**分别起 api 和 web：
+
 ```bash
-npm run build     # 产出 dist/
-npm start         # 起服务（同时自动拉起网易云 API）
+npm run build     # 产出 dist/（只在代码有更新时重跑）
+
+# 终端 1：网易云 API（:3300）
+npm run api
+
+# 终端 2：网页 + AI 接口（:3000）
+npm run web
 ```
 
 然后手机浏览器打开 **http://127.0.0.1:3000**。
 可选：浏览器菜单 →「添加到主屏幕」，当 PWA 用（`127.0.0.1` 属于浏览器安全上下文，可安装、可离线缓存）。
 
-想单独跑网易云 API（例如让它保持常驻）：
-```bash
-npm run netease                              # PORT=3300 起网易云 API
-NETEASE_AUTOSTART=false npm start            # 让网关不再重复拉起
-```
+两个服务互不依赖启动顺序：`web` 只是把 `/netease` 反代到 `127.0.0.1:3300`，那条链路连不上时只有网易云相关功能不可用，网页与其他接口照常。
 
 ## 登录（网易云，不扫码）
 
@@ -96,7 +100,7 @@ NETEASE_AUTOSTART=false npm start            # 让网关不再重复拉起
 需要热更新时用 Vite 开发服务器，AI 同样可用（`dev/api/devApiPlugin.mjs` 把 `/api` 挂上了）：
 
 ```bash
-npm run netease     # 终端 1：网易云 API :3300
+npm run api         # 终端 1：网易云 API :3300
 npm run dev         # 终端 2：Vite :3000（/netease 已配代理）
 ```
 
@@ -121,7 +125,7 @@ Android 会在锁屏后杀后台：
 
 ```bash
 pkg install tmux
-tmux new -s folia      # 在里面跑 npm start；Ctrl+b 然后 d 脱离
+tmux new -s folia      # 在里面分别跑 npm run api 与 npm run web；Ctrl+b 然后 d 脱离
 termux-wake-lock
 ```
 再到 系统设置 → 应用 → Termux → 电池 → **不优化 / 无限制**。
@@ -143,9 +147,9 @@ termux-wake-lock
 `deploy/`（Docker）、`packaging/`、`build/`、`sync-server/`、`.github/`、`vercel.json`、`wrangler.jsonc`、
 测试与截图基建（`test/`、Playwright/Vitest）。
 
-**新增**：`server/index.mjs`（本地网关）、`dev/api/devApiPlugin.mjs`（开发模式挂 `/api`）、本 README、`.env.example`。
+**新增**：`server/index.mjs`（本地网页 + AI 接口服务）、`dev/api/devApiPlugin.mjs`（开发模式挂 `/api`）、本 README、`.env.example`。
 
-**修改**：`package.json`（去掉 Electron/Vercel/Docker 脚本与依赖）、`vite.config.ts`（去掉 Electron 分支与 stage-client 入口，加 `/netease` 开发代理）。
+**修改**：`package.json`（去掉 Electron/Vercel/Docker 脚本与依赖；`api` / `web` 两个启动脚本分开）、`vite.config.ts`（去掉 Electron 分支与 stage-client 入口，加 `/netease` 开发代理）。
 
 前端 `src/` 未改动：它对 `window.electron` 的引用都在运行时判定，Web 环境下自动降级。
 

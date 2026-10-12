@@ -1,25 +1,25 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // server/index.mjs
-// Folia-Termux 的本地网关：一个进程同时提供网页、AI 接口，并（默认）拉起网易云 API。
+// Folia-Termux 的本地网页/接口服务：一个进程提供静态网页（dist/）与 AI 接口（/api/*），并把
+// `/netease/*` 反代到**单独启动**的网易云 API（`npm run api`）。不在这里拉子进程：api 与 web
+// 是两个独立命令，各自起、各自停。
 //
 // 为什么需要它：Web 版前端把 AI 主题/歌词分词/歌词代理都发到同源的相对路径 `/api/*`，
 // 而 Vercel/Cloudflare 的 serverless 在 Termux 里不存在。这里把 api/ 下那批处理器
 // （Edge 形态 `(Request)=>Response` 与 Node 形态 `(req,res)`）挂到同一个 http 服务上，
-// 并把 `/netease/*` 反代到本机的网易云 API，做到单 origin、无跨域。
+// 做到单 origin、无跨域。
 //
-// 用法：npm run build && npm start，然后手机浏览器打开 http://127.0.0.1:3000
+// 用法：先 `npm run api`（网易云 :3300），再 `npm run web`，浏览器打开 http://127.0.0.1:3000
 // 环境变量见 .env.example（.env / .env.local 会自动读入）。
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const API_DIR = path.join(ROOT, 'api');
-const NETEASE_APP = path.join(ROOT, 'node_modules', '@neteasecloudmusicapienhanced', 'api', 'app.js');
 
 /** 依次读 .env / .env.local 到 process.env；Node 自带的 loadEnvFile 缺失时退回极简解析。 */
 const loadEnvFiles = () => {
@@ -46,7 +46,6 @@ loadEnvFiles();
 
 const PORT = Number(process.env.PORT || 3000);
 const NETEASE_PORT = Number(process.env.NETEASE_PORT || 3300);
-const AUTOSTART_NETEASE = process.env.NETEASE_AUTOSTART !== 'false';
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -79,26 +78,7 @@ const readBody = (req) => new Promise((resolve, reject) => {
     req.on('error', reject);
 });
 
-// ---------- 网易云 API：子进程 + 反代 ----------
-
-let neteaseChild = null;
-
-const startNetease = () => {
-    if (!AUTOSTART_NETEASE) {
-        console.log(`[netease] autostart disabled; expecting an API on 127.0.0.1:${NETEASE_PORT}`);
-        return;
-    }
-    if (!fs.existsSync(NETEASE_APP)) {
-        console.warn('[netease] @neteasecloudmusicapienhanced/api not installed; /netease will 502 until you run it yourself');
-        return;
-    }
-    neteaseChild = spawn(process.execPath, [NETEASE_APP], {
-        cwd: ROOT,
-        env: { ...process.env, PORT: String(NETEASE_PORT), HOST: '127.0.0.1' },
-        stdio: 'inherit',
-    });
-    neteaseChild.on('exit', (code, signal) => console.log(`[netease] exited (code=${code} signal=${signal})`));
-};
+// ---------- 网易云 API：反代到单独启动的 `npm run api` ----------
 
 const proxyNetease = (req, res) => {
     const targetPath = (req.url || '/').replace(/^\/netease/, '') || '/';
@@ -242,14 +222,12 @@ const server = http.createServer((req, res) => {
     });
 });
 
-startNetease();
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[folia-termux] web + api on http://127.0.0.1:${PORT}`);
-    console.log(`[folia-termux] netease proxied at /netease -> 127.0.0.1:${NETEASE_PORT}`);
+    console.log(`[folia-termux] web on http://127.0.0.1:${PORT} (static dist/ + /api/*)`);
+    console.log(`[folia-termux] /netease -> 127.0.0.1:${NETEASE_PORT} (start it with \`npm run api\`)`);
 });
 
 const shutdown = () => {
-    try { neteaseChild?.kill(); } catch { /* 忽略 */ }
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
 };
