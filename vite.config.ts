@@ -211,6 +211,15 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
   const appReleaseChannel = process.env.APP_RELEASE_CHANNEL?.trim().toLowerCase() || 'realeco';
   const dockerStackVersion = process.env.DOCKER_STACK_VERSION?.trim() || '';
 
+  // Termux 里 process.platform === 'android'：workbox 生成 Service Worker 这一步在 android/arm64 上
+  // 会静默卡住（不报错、不产出 sw.js，dist/ 不完整）。手机本地部署用不到离线缓存，所以默认跳过；
+  // 想强制打开用 FOLIA_DISABLE_PWA=false，桌面/其他平台不受影响。
+  const pwaDisabled = process.env.FOLIA_DISABLE_PWA === 'true'
+    || (process.platform === 'android' && process.env.FOLIA_DISABLE_PWA !== 'false');
+  if (pwaDisabled) {
+    console.log('[folia-termux] PWA/Service Worker 生成已跳过（Termux/Android 或 FOLIA_DISABLE_PWA=true）');
+  }
+
   return {
     base: '/',
     worker: {
@@ -270,9 +279,9 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       commandPinyinPlugin(),
       react(),
       // PWA / service worker：手机本地部署用不到离线缓存，且 workbox 生成 SW 这一步在 Termux 上
-      // 最可能卡住或报错（卡在这里时 dist/ 会不完整，`npm run web` 起不来）。用
-      // FOLIA_DISABLE_PWA=true 可跳过，直接得到可用的 dist/。
-      ...(process.env.FOLIA_DISABLE_PWA === 'true' ? [] : [VitePWA({
+      // 会静默卡住（卡在这里时 dist/ 会不完整，`npm run web` 起不来）。默认在 Android 上跳过，
+      // 也可用 FOLIA_DISABLE_PWA=true 显式跳过、FOLIA_DISABLE_PWA=false 强制打开（见上面的 pwaDisabled）。
+      ...(pwaDisabled ? [] : [VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         devOptions: {
