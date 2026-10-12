@@ -269,7 +269,10 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
       devLyricProxyPlugin(),
       commandPinyinPlugin(),
       react(),
-      VitePWA({
+      // PWA / service worker：手机本地部署用不到离线缓存，且 workbox 生成 SW 这一步在 Termux 上
+      // 最可能卡住或报错（卡在这里时 dist/ 会不完整，`npm run web` 起不来）。用
+      // FOLIA_DISABLE_PWA=true 可跳过，直接得到可用的 dist/。
+      ...(process.env.FOLIA_DISABLE_PWA === 'true' ? [] : [VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         devOptions: {
@@ -298,7 +301,7 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
             }
           ]
         }
-      }),
+      })]),
       buildExitPlugin()
     ],
     define: {

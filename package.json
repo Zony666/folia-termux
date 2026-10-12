@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:no-pwa": "cross-env FOLIA_DISABLE_PWA=true vite build",
     "preview": "vite preview",
     "api": "cross-env PORT=3300 api",
     "web": "node server/index.mjs",

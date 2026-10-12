@@ -119,6 +119,21 @@ npm run dev         # 终端 2：Vite :3000（/netease 已配代理）
 即便如此卡住了也可以直接 Ctrl+C——**此时 `dist/` 已经写完**，产物是完整的。想关掉兜底退出：
 `FOLIA_BUILD_NO_FORCE_EXIT=true npm run build`。
 
+### Termux 上 build 停在 PWA / 缺了那几行，之后 `dist/` 不完整、`npm run web` 起不来
+
+PWA（Service Worker）是构建末尾由 workbox 另外生成的，这一步在部分 Termux 环境会卡住或报错。
+卡住时 `dist/` 不完整，`npm run web` 会提示找不到 dist，看起来就是"网页出不来"。手机本地用不到
+离线缓存，直接跳过这一步构建：
+
+```bash
+npm run build:no-pwa     # = FOLIA_DISABLE_PWA=true vite build
+```
+
+产物功能完全一致，只是没有 Service Worker、不能离线打开。
+
+> 如果你之前成功跑过带 PWA 的构建、浏览器已经注册过 Service Worker，换用 no-pwa 后请先清一次该站点的数据
+> （或 DevTools → Application → Service Workers → Unregister），否则旧 SW 可能继续吃缓存，像是新版本没生效。
+
 ## 保活（Termux 特有）
 
 Android 会在锁屏后杀后台：
