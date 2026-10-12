@@ -102,6 +102,19 @@ npm run dev         # 终端 2：Vite :3000（/netease 已配代理）
 
 改 `.env.local` 后必须重启。
 
+## 常见问题
+
+### `npm run build` 打印 `built in` 之后不退出，只能 Ctrl+C
+
+某些环境（实测 Termux/Android）构建完成后仍有残留句柄拖着 Node 不结束。本项目已处理：
+
+- 构建期不再请求外部服务解析 commit 名（那个 fetch 在国内网络下会留下连不上的 socket）；需要时用
+  `FOLIA_RESOLVE_COMMIT_NAME=true` 打开，自建地址用 `FOLIA_COMMIT_NAME_URL`。
+- 构建结束时（`closeBundle` 之后）强制退出，所以命令一定会返回。
+
+即便如此卡住了也可以直接 Ctrl+C——**此时 `dist/` 已经写完**，产物是完整的。想关掉兜底退出：
+`FOLIA_BUILD_NO_FORCE_EXIT=true npm run build`。
+
 ## 保活（Termux 特有）
 
 Android 会在锁屏后杀后台：

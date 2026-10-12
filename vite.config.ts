@@ -129,6 +129,24 @@ function devLyricProxyPlugin() {
   };
 }
 
+// 构建结束后的兜底退出：某些环境（实测 Termux/Android）在打印 "built in" 之后仍有一个残留句柄
+// （网络 socket、watcher 或原生线程）拖着 Node 不结束，只能 Ctrl+C。产物此时已经写完，这里在
+// closeBundle（enforce: post，排在 PWA 写 sw.js 之后）再给一小段宽限，然后强制退出，保证命令一定返回。
+// 用 FOLIA_BUILD_NO_FORCE_EXIT=true 可以关掉这个行为。
+const BUILD_EXIT_GRACE_MS = 1500;
+
+function buildExitPlugin() {
+  return {
+    name: 'folia-termux-build-exit',
+    apply: 'build' as const,
+    enforce: 'post' as const,
+    closeBundle() {
+      if (process.env.FOLIA_BUILD_NO_FORCE_EXIT === 'true') return;
+      setTimeout(() => process.exit(process.exitCode ?? 0), BUILD_EXIT_GRACE_MS);
+    },
+  };
+}
+
 export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig> {
   let commitHash = '';
   if (process.env.VERCEL_GIT_COMMIT_SHA) {
@@ -156,11 +174,15 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
 
   let commitSuffix = '';
   const canResolveCommitName = /^[0-9a-f]{7,40}$/i.test(commitHash) && !/^0+$/.test(commitHash);
-  if (canResolveCommitName) {
+  // 默认不在构建期请求外部服务解析 commit 名：这次 fetch 在 Termux / 国内网络下会留下一个连不上的
+  // socket，让 `vite build` 在打印 "built in" 之后一直不退出（只能 Ctrl+C）。它只影响显示用的
+  // __COMMIT_HASH__ 后缀，需要时用 FOLIA_RESOLVE_COMMIT_NAME=true 打开；自建地址可用 FOLIA_COMMIT_NAME_URL。
+  if (process.env.FOLIA_RESOLVE_COMMIT_NAME === 'true' && canResolveCommitName) {
+    const commitNameUrl = process.env.FOLIA_COMMIT_NAME_URL?.trim() || 'https://namoe.izuna.top/api/namoe';
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch(`https://namoe.izuna.top/api/namoe?hash=${commitHash}`, {
+      const res = await fetch(`${commitNameUrl}?hash=${commitHash}`, {
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -276,7 +298,8 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
             }
           ]
         }
-      })
+      }),
+      buildExitPlugin()
     ],
     define: {
       '__COMMIT_HASH__': JSON.stringify(commitHash + commitSuffix),
