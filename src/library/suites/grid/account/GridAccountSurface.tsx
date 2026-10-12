@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +15,7 @@ import {
     useLibraryAccountPendingSwitch,
     type LibraryLoginView,
 } from '../../../core/bindings/useLibraryAccount';
-import OnlineProviderLoginModal from './OnlineProviderLoginModal';
+import OnlineProviderLoginModal, { type PhoneLoginProps } from './OnlineProviderLoginModal';
 import { buildQrLoginFailureHelpProps } from './buildQrLoginFailureHelpProps';
 import ConfirmDialog from '../../../../components/shared/ConfirmDialog';
 import qqIcon from '../../../../assets/providers/qq.svg';
@@ -111,6 +111,19 @@ const buildLoginModalProps = (
 
 const hasAction = (actions: readonly LibraryAccountActionId[], action: LibraryAccountActionId) => actions.includes(action);
 
+// 手机号登录的失败原因 → 当前语言的文案。reason 由 provider 从网易云的返回码映射而来，
+// 认不出来的一律用通用文案，原始后端信息只在日志里。
+const phoneLoginErrorText = (t: TFunction) => (error: unknown): string => {
+    const reason = (error as { phoneLoginReason?: string } | null)?.phoneLoginReason;
+    switch (reason) {
+        case 'invalid-phone': return t('home.phoneErrPhone');
+        case 'invalid-captcha': return t('home.phoneErrCaptcha');
+        case 'wrong-password': return t('home.phoneErrPassword');
+        case 'too-frequent': return t('home.phoneErrFrequent');
+        default: return t('home.phoneErrGeneric');
+    }
+};
+
 const GridAccountSurface: React.FC<LibraryAccountSurfaceProps> = ({ account, isDaylight, declaredActions, layer }) => {
     const { t } = useTranslation();
     const login = useLibraryAccountLogin(account);
@@ -121,9 +134,47 @@ const GridAccountSurface: React.FC<LibraryAccountSurfaceProps> = ({ account, isD
         backendRestart: hasAction(declaredActions.actions, 'account-backend-restart'),
     };
 
+    // 手机号登录默认选中：这套界面主要部署在手机（Termux）上，手机扫不了自己屏幕上的二维码。
+    const [loginMode, setLoginMode] = useState<'qr' | 'phone'>('phone');
+    const loginVisible = Boolean(login?.visible);
+    useEffect(() => {
+        if (loginVisible) setLoginMode('phone');
+    }, [loginVisible]);
+
+    const phoneSupported = Boolean(login?.visible) && account.canLoginWithPhone(login!.session.providerId);
+    const phoneLogin: PhoneLoginProps | undefined = phoneSupported && login
+        ? {
+            active: loginMode === 'phone',
+            phoneTitle: t('home.phoneLoginTitle'),
+            qrTabLabel: t('home.qrLoginTab'),
+            phoneTabLabel: t('home.phoneLoginTab'),
+            onSelectQr: () => setLoginMode('qr'),
+            onSelectPhone: () => setLoginMode('phone'),
+            labels: {
+                countryCode: t('home.phoneCountryCode'),
+                phone: t('home.phoneNumber'),
+                phonePlaceholder: t('home.phoneNumberPlaceholder'),
+                code: t('home.phoneCaptcha'),
+                codePlaceholder: t('home.phoneCaptchaPlaceholder'),
+                sendCode: t('home.phoneSendCode'),
+                resend: t('home.phoneResend'),
+                sending: t('home.phoneSending'),
+                submit: t('home.phoneSubmit'),
+                submitting: t('home.phoneSubmitting'),
+            },
+            formatError: phoneLoginErrorText(t),
+            onSendCode: (phone, countryCode) => account.sendLoginSmsCode(login.session.providerId, phone, countryCode),
+            onSubmit: async (phone, code, countryCode) => {
+                const outcome = await account.submitLoginSmsCode(login.session.providerId, { phone, captcha: code, countryCode });
+                // 登录本身成功但账户没刷新出来：留一条提示，弹窗状态由 controller 决定。
+                if (outcome === 'refresh-failed') throw new Error(t('home.phoneErrGeneric'));
+            },
+        }
+        : undefined;
+
     const loginModal = (
         <AnimatePresence>
-            {login?.visible && <OnlineProviderLoginModal {...buildLoginModalProps(login, account, t, features)} />}
+            {login?.visible && <OnlineProviderLoginModal {...buildLoginModalProps(login, account, t, features)} phoneLogin={phoneLogin} />}
         </AnimatePresence>
     );
     const canPortal = typeof document !== 'undefined';

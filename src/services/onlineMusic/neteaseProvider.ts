@@ -146,6 +146,28 @@ const qrFailureOf = (response: any): Extract<QrLoginState, { state: 'error' }> =
 
 const yesNo = (value: boolean): string => (value ? 'yes' : 'no');
 
+// 网易云手机号登录的错误码 → 界面可翻译的类别；不认识的码只保留原文，界面回退到通用文案。
+const NETEASE_PHONE_LOGIN_REASON: Record<number, string> = {
+    400: 'invalid-phone',
+    501: 'invalid-phone',
+    502: 'wrong-password',
+    503: 'invalid-captcha',
+    509: 'too-frequent',
+    8821: 'too-frequent',
+};
+
+/** 手机号登录接口失败时抛出：带上可翻译的 reason，界面据此显示具体原因而不是后端原文。 */
+const phoneLoginErrorOf = (response: any, fallback: string): OnlineProviderError => {
+    const code = Number(response?.code);
+    return Object.assign(
+        new OnlineProviderError('invalid-response', `NetEase phone login failed: ${describeQrResponse(response)}`, 'netease', response),
+        {
+            phoneLoginReason: Number.isFinite(code) ? NETEASE_PHONE_LOGIN_REASON[code] : undefined,
+            serverMessage: String(response?.message || response?.msg || fallback),
+        },
+    );
+};
+
 // 最近一次登录态检查的结论。扫码确认后账户没加载出来（account-refresh-failed）时，报告靠它说明是哪个接口拿不到登录态。
 let lastLoginStatusCheck: string | null = null;
 const noteLoginStatusCheck = (summary: string): void => {
@@ -443,6 +465,21 @@ export const neteaseProvider: OnlineMusicProvider = {
                 // 风控（8821 等）、上游网络错误（502）与别的返回码都带着原始 code 与原文交给会话。
                 default: return qrFailureOf(response);
             }
+        },
+        // 手机号 + 短信验证码：不扫码的登录路径。发码与登录都只认 code 200，失败抛带 reason 的错误。
+        async sendLoginSmsCode(phone, countryCode) {
+            const response = await neteaseApi.sendLoginCaptcha(phone, countryCode || undefined);
+            if (Number(response?.code) === 200) return;
+            throw phoneLoginErrorOf(response, '验证码发送失败');
+        },
+        async loginWithSmsCode({ phone, captcha, countryCode }) {
+            const response = await neteaseApi.loginCellphoneWithCaptcha({ phone, captcha, countrycode: countryCode || undefined });
+            const cookie = typeof response?.cookie === 'string' ? response.cookie : '';
+            if (Number(response?.code) === 200 && cookie) {
+                writeProviderSessionValue('netease', 'cookie', cookie);
+                return;
+            }
+            throw phoneLoginErrorOf(response, '登录失败');
         },
         async getQrLoginDiagnostics() {
             return collectLoginBackendDiagnostics('netease', [

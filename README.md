@@ -83,6 +83,14 @@ npm run netease                              # PORT=3300 起网易云 API
 NETEASE_AUTOSTART=false npm start            # 让网关不再重复拉起
 ```
 
+## 登录（网易云，不扫码）
+
+本项目给网易云加了 **手机号 + 短信验证码** 登录：登录弹窗顶部切到「手机号」，填号码和验证码即可，不用扫二维码
+（手机本地部署时扫自己屏幕本来也不现实）。默认区号 `86`，可改。原来的「扫码」入口仍在。
+
+手机号登录走网易云的 `/captcha/sent` 与 `/login/cellphone`，由 `server/index.mjs` 经 `/netease` 反代转发，
+不需要额外配置。登录成功后登录态（cookie）存在浏览器本地，和扫码登录一致。
+
 ## 开发模式
 
 需要热更新时用 Vite 开发服务器，AI 同样可用（`dev/api/devApiPlugin.mjs` 把 `/api` 挂上了）：

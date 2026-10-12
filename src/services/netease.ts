@@ -580,6 +580,19 @@ export const neteaseApi = {
     return fetchWithCreds(`/login/qr/check?key=${key}`);
   },
 
+  // 手机号验证码登录：不扫码的登录路径（本地/手机部署用）。ctcode 是收码国家码，countrycode 是登录国家码，都默认 86。
+  sendLoginCaptcha: async (phone: string, ctcode?: string) => {
+    const params = new URLSearchParams({ phone });
+    if (ctcode) params.set('ctcode', ctcode);
+    return fetchWithCreds(`/captcha/sent?${params.toString()}`);
+  },
+
+  loginCellphoneWithCaptcha: async ({ phone, captcha, countrycode }: { phone: string; captcha: string; countrycode?: string }) => {
+    const params = new URLSearchParams({ phone, captcha });
+    if (countrycode) params.set('countrycode', countrycode);
+    return fetchWithCreds(`/login/cellphone?${params.toString()}`);
+  },
+
   getLoginStatus: async () => {
     const res = await fetchWithCreds(`/login/status`);
     if (res.data?.profile) {

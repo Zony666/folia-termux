@@ -278,6 +278,24 @@ export const omni = {
         return typeof ttlMs === 'number' && ttlMs > 0 ? ttlMs : null;
     },
 
+    // 手机号验证码登录：provider 不实现就没有这个能力，登录界面据此决定要不要给入口。
+    canLoginWithPhone(providerId: OmniProviderId): boolean {
+        const auth = requireOnlineMusicProvider(providerId).auth;
+        return Boolean(auth?.sendLoginSmsCode && auth?.loginWithSmsCode);
+    },
+
+    async sendLoginSmsCode(providerId: OmniProviderId, phone: string, countryCode?: string): Promise<void> {
+        const auth = requireOnlineMusicProvider(providerId).auth;
+        if (!auth?.sendLoginSmsCode) return unsupported(providerId, 'phone-login');
+        await auth.sendLoginSmsCode(phone, countryCode);
+    },
+
+    async loginWithSmsCode(providerId: OmniProviderId, params: { phone: string; captcha: string; countryCode?: string }): Promise<void> {
+        const auth = requireOnlineMusicProvider(providerId).auth;
+        if (!auth?.loginWithSmsCode) return unsupported(providerId, 'phone-login');
+        await auth.loginWithSmsCode(params);
+    },
+
     async getUserPlaylists(userId: MediaId, page: PageInput): Promise<OmniPage<OmniCollection>> {
         return withActiveProvider(async provider => provider.library?.getUserPlaylists?.(userId, page.limit, page.offset) ?? emptyPage(page.offset));
     },

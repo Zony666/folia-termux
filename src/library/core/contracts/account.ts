@@ -276,6 +276,12 @@ export interface LibraryAccountController {
     /** 只在 backend.canRestart 时；恢复运行后自动要码。 */
     restartLoginBackend(): Promise<LibraryBackendRestartResult>;
     buildLoginDiagnosticReport(): Promise<LibraryLoginDiagnosticResult>;
+    /** 该平台是否支持手机号验证码登录（同步；provider 未声明即 false）。 */
+    canLoginWithPhone(providerId: OnlineProviderId): boolean;
+    /** 发短信验证码；失败时 reject，界面显示原因。 */
+    sendLoginSmsCode(providerId: OnlineProviderId, phone: string, countryCode?: string): Promise<void>;
+    /** 用验证码登录并收尾：刷新账户、收起登录，必要时发起 activate-after-login 切换确认。 */
+    submitLoginSmsCode(providerId: OnlineProviderId, params: { phone: string; captcha: string; countryCode?: string }): Promise<LibraryLoginOutcome>;
     /** 只对当前且已登录的平台；走宿主注入的 per-provider logout。 */
     logout(providerId: OnlineProviderId): Promise<LibraryLogoutResult>;
     /** 宿主卸载：关闭登录会话（keyed 取消），待确认切换按 declined / disposed 结算。 */
@@ -303,6 +309,10 @@ export type LibraryAccountAuthPort = {
     canRunQrLoginSelfCheck(providerId: OnlineProviderId): boolean;
     /** 主动自检；没有可检查的对象时 resolve null，自检本身出错时 reject。 */
     runQrLoginSelfCheck(providerId: OnlineProviderId): Promise<LoginSelfCheckResult | null>;
+    /** 手机号验证码登录（可选）：provider 不实现时 canLoginWithPhone 为 false，登录界面不给入口。 */
+    canLoginWithPhone?(providerId: OnlineProviderId): boolean;
+    sendLoginSmsCode?(providerId: OnlineProviderId, phone: string, countryCode?: string): Promise<void>;
+    loginWithSmsCode?(providerId: OnlineProviderId, params: { phone: string; captcha: string; countryCode?: string }): Promise<void>;
     getProviderCapabilities(providerId: OnlineProviderId): Pick<ProviderCapabilities, 'auth'>;
 };
 

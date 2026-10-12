@@ -366,6 +366,10 @@ export interface OnlineAuthProvider {
     // 二维码的有效期。声明了它，UI 才会自己计时并在到点时停止轮询、给出重试；
     // 不声明就沿用原本的做法——只认后端报出的过期状态。
     getQrTtlMs?(): number;
+    // 手机号验证码登录（可选）：不实现即表示该平台不支持这条路径，登录界面不会给出入口。
+    // sendLoginSmsCode 只负责发码；loginWithSmsCode 用验证码换取登录态，成功后由调用方刷新账户。
+    sendLoginSmsCode?(phone: string, countryCode?: string): Promise<void>;
+    loginWithSmsCode?(params: { phone: string; captcha: string; countryCode?: string }): Promise<void>;
     // 扫码登录失败后附进诊断报告的 provider 专属信息，每项一行、已格式化好（后端状态、拉起步骤、请求与连接记录等）。
     // 报告会贴进公开的 issue，界面已告知用户其中包含哪些数据；登录凭据（cookie、token、session）的值不能出现。
     getQrLoginDiagnostics?(): Promise<string[]>;

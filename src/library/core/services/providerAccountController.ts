@@ -9,6 +9,7 @@ import type {
     LibraryLoginCloseResult,
     LibraryLoginCompletion,
     LibraryLoginDiagnosticResult,
+    LibraryLoginOutcome,
     LibraryLoginPhase,
     LibraryLoginRequestResult,
     LibraryLoginSessionSnapshot,
@@ -476,6 +477,58 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         batch(() => complete(result.status === 'switched' ? 'completed' : 'activation-declined'));
     };
 
+    // ─── 手机号验证码登录 ───────────────────────────────────────────────
+
+    const canLoginWithPhone = (providerId: OnlineProviderId): boolean => (
+        !disposed && typeof auth.canLoginWithPhone === 'function' && auth.canLoginWithPhone(providerId)
+    );
+
+    const sendLoginSmsCode = async (providerId: OnlineProviderId, phone: string, countryCode?: string): Promise<void> => {
+        if (disposed || typeof auth.sendLoginSmsCode !== 'function') throw new Error('phone login is not supported for this provider');
+        await auth.sendLoginSmsCode(providerId, phone, countryCode);
+    };
+
+    /**
+     * 手机号登录成功后的收尾，与扫码确认（finishConfirmedLogin）同一套三步：刷新账户、收起登录、
+     * 不是当前平台时发起 activate-after-login。区别是没有扫码会话来认领确认，所以自己停掉仍在跑的扫码会话。
+     */
+    const finishExternalLogin = async (providerId: OnlineProviderId): Promise<LibraryLoginOutcome> => {
+        const loginId = login?.id ?? 0;
+        const complete = (outcome: LibraryLoginOutcome) => {
+            lastLoginCompletion = { sessionId: loginId, providerId, outcome };
+        };
+        let refreshed = false;
+        try {
+            refreshed = (await providerAccounts.refresh(providerId)) !== false;
+        } catch (error) {
+            log('warn', 'login:refresh-error', { providerId, ...describeLoginError(error) });
+        }
+        if (!refreshed) {
+            batch(() => complete('refresh-failed'));
+            return 'refresh-failed';
+        }
+        const needsActivation = providerId !== activeProviderId();
+        batch(() => {
+            session.stop();
+            login = null;
+            if (!needsActivation) complete('completed');
+        });
+        if (!needsActivation) return 'completed';
+        const result = await openSwitchRequest(providerId, 'activate-after-login');
+        const outcome: LibraryLoginOutcome = result.status === 'switched' ? 'completed' : 'activation-declined';
+        if (!disposed) batch(() => complete(outcome));
+        return outcome;
+    };
+
+    const submitLoginSmsCode = async (
+        providerId: OnlineProviderId,
+        params: { phone: string; captcha: string; countryCode?: string },
+    ): Promise<LibraryLoginOutcome> => {
+        if (disposed || typeof auth.loginWithSmsCode !== 'function') throw new Error('phone login is not supported for this provider');
+        await auth.loginWithSmsCode(providerId, params);
+        return finishExternalLogin(providerId);
+    };
+
     // ─── 选平台与登出 ───────────────────────────────────────────────────
 
     const selectProvider = async (providerId: OnlineProviderId): Promise<LibrarySelectProviderResult> => {
@@ -534,6 +587,9 @@ export const createProviderAccountController = (deps: LibraryAccountControllerDe
         closeLogin,
         restartLoginBackend,
         buildLoginDiagnosticReport,
+        canLoginWithPhone,
+        sendLoginSmsCode,
+        submitLoginSmsCode,
         logout: logoutProvider,
         dispose,
     };
